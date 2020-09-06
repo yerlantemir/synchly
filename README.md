@@ -33,7 +33,7 @@ Automate database backups with customizable recurring schedules.
 * **Supported Databases**
     * MySQL
     * MongoDB
-* **Compression** - Synchly compresses the database backups to save up space.
+* **Compression** - Compress the database backups to save up space.
 * **Cloud Storage Integration** - Sync the local backups to remote storage of your choice.
 * **Supported remote storages**
     * Google Drive

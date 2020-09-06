@@ -2,10 +2,9 @@ const client = require('ssh2-sftp-client');
 const configstore = require('conf');
 const path = require('path');
 
-const confStore = new configstore();
-
-const init = (sftpConfig = undefined) => {
-    if (!sftpConfig) sftpConfig = confStore.store;
+const init = (jobName, sftpConfig = undefined) => {
+    const jobConfStore = new configstore({configName: jobName});
+    if (!sftpConfig) sftpConfig = jobConfStore.store;
 
     const config = {
         host: sftpConfig.sftpHost,
@@ -17,8 +16,9 @@ const init = (sftpConfig = undefined) => {
     return config;
 };
 
-const exists = async (sftpConfig = undefined) => {
-    if (!sftpConfig) sftpConfig = confStore.store;
+const exists = async (jobName, sftpConfig = undefined) => {
+    const jobConfStore = new configstore({configName: jobName});
+    if (!sftpConfig) sftpConfig = jobConfStore.store;
 
     const config = init(sftpConfig);
     let sftp = new client();
@@ -41,8 +41,9 @@ const exists = async (sftpConfig = undefined) => {
     return existsRes;
 };
 
-const uploadFile = async (srcFileName, srcFilePath) => {
-    const sftpConfig = confStore.store;
+const uploadFile = async (jobName, srcFileName, srcFilePath) => {
+    const jobConfStore = new configstore({configName: jobName});
+    const sftpConfig = jobConfStore.store;
 
     const config = init(sftpConfig);
     let sftp = new client();
@@ -61,8 +62,9 @@ const uploadFile = async (srcFileName, srcFilePath) => {
     return uploadRes;
 };
 
-const deleteFile = async (fileName) => {
-    const sftpConfig = confStore.store;
+const deleteFile = async (jobName, fileName) => {
+    const jobConfStore = new configstore({configName: jobName});
+    const sftpConfig = jobConfStore.store;
 
     const config = init(sftpConfig);
     let sftp = new client();

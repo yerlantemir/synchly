@@ -7,8 +7,6 @@ const db = require('./database/database');
 const remoteSync = require('./remoteSync/remoteSync');
 const smtp = require('./smtp/smtp');
 
-const confStore = new configstore();
-
 const dtf = new Intl.DateTimeFormat('en', {year: 'numeric', month: '2-digit', day: '2-digit'});
 
 function isFirstSunday(date) {
@@ -21,24 +19,21 @@ function getBackupDirName(date) {
     return backupDir;
 }
 
-let deletedBackups = [];
-let isRemoteError = false;
+let backupDatabase = async (jobName) => {
+    const jobConfStore = new configstore({configName: jobName});
+    const jobConfObj = jobConfStore.store;
+    let deletedBackups = [];
 
-let backupDatabase = async () => {
-    const confObj = confStore.store;
-    deletedBackups = [];
-    isRemoteError = false;
-
-    const remoteSyncEnabled = confObj.remoteSyncEnabled;
+    const remoteSyncEnabled = jobConfObj.remoteSyncEnabled;
 
     const currentDate = new Date();
     const newBackupDir = getBackupDirName(currentDate);
-    const backupPath = confObj.dbBackupPath;
+    const backupPath = jobConfObj.dbBackupPath;
     const newBackupPath = path.join(backupPath, newBackupDir);
 
-    const dbNoOfDays = Number(confObj.dbNoOfDays);
-    const dbNoOfWeeks = Number(confObj.dbNoOfWeeks);
-    const dbNoOfMonths = Number(confObj.dbNoOfMonths);
+    const dbNoOfDays = Number(jobConfObj.dbNoOfDays);
+    const dbNoOfWeeks = Number(jobConfObj.dbNoOfWeeks);
+    const dbNoOfMonths = Number(jobConfObj.dbNoOfMonths);
 
     let dbDump = await db.dump(newBackupPath);
 
@@ -80,23 +75,25 @@ let backupDatabase = async () => {
 
     try {
         if (remoteSyncEnabled) {
-            let remoteUploadResp = await remoteSync.uploadFile(newBackupDir, newBackupPath);
+            let remoteUploadResp = await remoteSync.uploadFile(jobName, newBackupDir, newBackupPath);
             for (let j = 0; j < deletedBackups.length; j++) {
-                let remoteDeleteResp = await remoteSync.deleteFile(deletedBackups[j]);
+                let remoteDeleteResp = await remoteSync.deleteFile(jobName, deletedBackups[j]);
             }
         }
     } catch (err) {
-        isRemoteError = true;
+        err.isRemoteError = true;
         throw err;
     }
 
     return deletedBackups;
 };
 
-let backupCheck = async (isDebug) => {
-    const confObj = confStore.store;
-    const dbBackupPath = confObj.dbBackupPath;
-    const smtpEnabled = confObj.smtpEnabled;
+let backupCheck = async (jobName, isDebug) => {
+
+    const jobConfStore = new configstore({configName: jobName});
+    const jobConfObj = jobConfStore.store;
+    const dbBackupPath = jobConfObj.dbBackupPath;
+    const smtpEnabled = jobConfObj.smtpEnabled;
 
     if (!files.directoryExists(dbBackupPath)) {
         console.error(`db: Given directory "${dbBackupPath}" for storing local backups does not exist.`);
@@ -106,34 +103,33 @@ let backupCheck = async (isDebug) => {
     const currentDate = new Date();
     const newBackupDir = getBackupDirName(currentDate);
     try {
-        let cDate = new Date();
-        let deletedBackups = await backupDatabase(cDate);
+        let deletedBackups = await backupDatabase(jobName);
 
-        const statusReportLog = strings.statusReportLog(true, deletedBackups, undefined, true, undefined);
+        const statusReportLog = strings.statusReportLog(jobName, true, deletedBackups, undefined, true, undefined);
         console.log(statusReportLog);
 
         if (smtpEnabled) {
-            const htmlBody = strings.statusReportTemplate(true, deletedBackups, undefined, true, undefined);
-            smtp.sendMailScheduler('Daily Status Report', htmlBody, isDebug);
+            const htmlBody = strings.statusReportTemplate(jobName, true, deletedBackups, undefined, true, undefined);
+            smtp.sendMailScheduler(jobName, 'Daily Status Report', htmlBody, isDebug);
         }
     } catch (err) {
         let statusReportLog;
-        if (isRemoteError) {
-            statusReportLog = strings.statusReportLog(true, deletedBackups, undefined, false, err);
+        if (err.isRemoteError) {
+            statusReportLog = strings.statusReportLog(jobName, true, deletedBackups, undefined, false, err);
         } else {
-            statusReportLog = strings.statusReportLog(false, [], err, false, undefined);
+            statusReportLog = strings.statusReportLog(jobName, false, [], err, false, undefined);
         }
 
         console.log(statusReportLog);
 
         if (smtpEnabled) {
             let htmlBody;
-            if (isRemoteError) {
-                htmlBody = strings.statusReportTemplate(true, deletedBackups, undefined, false, err);
+            if (err.isRemoteError) {
+                htmlBody = strings.statusReportTemplate(jobName, true, deletedBackups, undefined, false, err);
             } else {
-                htmlBody = strings.statusReportTemplate(false, [], err, false, undefined);
+                htmlBody = strings.statusReportTemplate(jobName, false, [], err, false, undefined);
             }
-            smtp.sendMailScheduler('Daily Status Report', htmlBody, isDebug);
+            smtp.sendMailScheduler(jobName, 'Daily Status Report', htmlBody, isDebug);
         }
     }
 };

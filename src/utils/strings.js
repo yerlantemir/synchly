@@ -1,10 +1,6 @@
 const configstore = require('conf');
 const utils = require('./utils');
 
-const confStore = new configstore();
-
-const confObj = confStore.store;
-
 const usageInfo = `usage: synchly [--config module]
 usage: synchly [--config module] [--file filepath]
 usage: synchly [--disable module] [--debug]
@@ -28,11 +24,14 @@ Options:
       --start                   start synchly instance which logs to stdout and stderr
   -v, --version                 display version information and exit`;
 
-const statusReportTemplate = (dbSuccess, removedDirs, dbError, remoteSuccess, remoteError) => {
+const statusReportTemplate = (jobName, dbSuccess, removedDirs, dbError, remoteSuccess, remoteError) => {
+
+    const jobConfStore = new configstore({configName: jobName});
+    const jobConfObj = jobConfStore.store;
     const currentDateString = new Date().toDateString();
-    const remoteStatus = confObj.remoteSyncEnabled;
-    const dbType = confObj.dbType;
-    const dbName = confObj.dbName;
+    const remoteStatus = jobConfObj.remoteSyncEnabled;
+    const dbType = jobConfObj.dbType;
+    const dbName = jobConfObj.dbName;
     let retString = '<p>&nbsp;</p>';
 
     if (dbSuccess) {
@@ -53,9 +52,9 @@ const statusReportTemplate = (dbSuccess, removedDirs, dbError, remoteSuccess, re
 
         if (remoteStatus) {
             if (remoteSuccess) {
-                retString += `<p>Remote sync of local backups to ${confObj.remoteType} completed successfully.</p>`;
+                retString += `<p>Remote sync of local backups to ${jobConfObj.remoteType} completed successfully.</p>`;
             } else {
-                retString += `<p><span style="color: #ff0000;">Remote sync of local backups to ${confObj.remoteType} failed.</span></p>
+                retString += `<p><span style="color: #ff0000;">Remote sync of local backups to ${jobConfObj.remoteType} failed.</span></p>
                 <p><strong>${remoteError.name}:</strong> ${remoteError.message}</p>
                 <p><strong>Stacktrace:</strong></p>
                 <p>${remoteError}</p>`;
@@ -73,17 +72,20 @@ const statusReportTemplate = (dbSuccess, removedDirs, dbError, remoteSuccess, re
     retString += `<p>&nbsp;</p>
     <p><strong>SMTP:</strong></p>
     <p>Status notifications are sent to the following e-mails:</p>
-    <p>${confObj.smtpRecipientMail}</p>`;
+    <p>${jobConfObj.smtpRecipientMail}</p>`;
 
     return retString;
 };
 
-const statusReportLog = (dbSuccess, removedDirs, dbError, remoteSuccess, remoteError) => {
+const statusReportLog = (jobName, dbSuccess, removedDirs, dbError, remoteSuccess, remoteError) => {
+
+    const jobConfStore = new configstore({configName: jobName});
+    const jobConfObj = jobConfStore.store;
     const currentDateString = new Date().toDateString();
-    const remoteSyncEnabled = confObj.remoteSyncEnabled;
-    const smtpEnabled = confObj.smtpEnabled;
-    const dbType = confObj.dbType;
-    const dbName = confObj.dbName;
+    const remoteSyncEnabled = jobConfObj.remoteSyncEnabled;
+    const smtpEnabled = jobConfObj.smtpEnabled;
+    const dbType = jobConfObj.dbType;
+    const dbName = jobConfObj.dbName;
     let retString = 'Daily Status Report:\n\n';
 
     if (dbSuccess) {
@@ -103,9 +105,9 @@ const statusReportLog = (dbSuccess, removedDirs, dbError, remoteSuccess, remoteE
 
         if (remoteSyncEnabled) {
             if (remoteSuccess) {
-                retString += `Remote sync of local backups to ${confObj.remoteType} completed successfully.\n`;
+                retString += `Remote sync of local backups to ${jobConfObj.remoteType} completed successfully.\n`;
             } else {
-                retString += `Remote sync of local backups to ${confObj.remoteType} failed.\n${remoteError.name}: ${remoteError.message}\n`;
+                retString += `Remote sync of local backups to ${jobConfObj.remoteType} failed.\n${remoteError.name}: ${remoteError.message}\n`;
                 retString += `Stacktrace:\n${remoteError}\n`;
             }
         } else {
@@ -118,7 +120,7 @@ const statusReportLog = (dbSuccess, removedDirs, dbError, remoteSuccess, remoteE
 
     retString += `\nSMTP:\n`;
     if (smtpEnabled) {
-        retString += `Status notifications are sent to the following e-mails:\n${confObj.smtpRecipientMail}\n`;
+        retString += `Status notifications are sent to the following e-mails:\n${jobConfObj.smtpRecipientMail}\n`;
     } else {
         retString += `Disabled\n`;
     }
@@ -135,4 +137,5 @@ module.exports = {
     statusReportTemplate,
     statusReportLog,
     resetSuccessLog: 'Reset all configurations successfull',
+    fileWoConfigArg: 'Use --flag=filePath along with --config=module for initializing the module config using the file',
 };
