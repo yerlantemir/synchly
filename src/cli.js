@@ -10,30 +10,34 @@ const packageJson = require('./../package.json');
 const files = require('./utils/files');
 const inquirer = require('./inquirer');
 
-const confStore = new configstore();
+const defaultJobName = 'master';
 
 const parseArgumentsIntoOptions = (rawArgs) => {
     const args = arg(
         {
-            '--enable': String,
-            '--disable': String,
             '--config': String,
+            '--disable': String,
+            '--debug': Boolean,
+            '--disablejob': Boolean,
+            '--enable': String,
+            '--enablejob': Boolean,
+            '--file': String,
+            '--help': Boolean,
+            '--job': String,
+            '--reset': Boolean,
             '--start': Boolean,
             '--stacktrace': Boolean,
-            '--debug': Boolean,
-            '--file': String,
-            '--reset': Boolean,
             '--version': Boolean,
-            '--help': Boolean,
             '-c': '--config',
-            '-v': '--version',
-            '-h': '--help',
-            '-r': '--reset',
-            '-e': '--enable',
             '-d': '--disable',
-            '-S': '--stacktrace',
             '-D': '--debug',
+            '-e': '--enable',
             '-f': '--file',
+            '-h': '--help',
+            '-j': '--job',
+            '-r': '--reset',
+            '-S': '--stacktrace',
+            '-v': '--version',
         },
         {
             argv: rawArgs.slice(2),
@@ -41,19 +45,24 @@ const parseArgumentsIntoOptions = (rawArgs) => {
     );
     return {
         config: args['--config'],
-        enable: args['--enable'],
         disable: args['--disable'],
-        start: args['--start'],
         debug: args['--stacktrace'] || args['--debug'],
-        version: args['--version'],
-        help: args['--help'],
-        reset: args['--reset'],
+        enable: args['--enable'],
+        enablejob: args['--enablejob'],
+        disablejob: args['--disablejob'],
         file: args['--file'],
+        help: args['--help'],
+        job: args['--job'],
+        reset: args['--reset'],
+        start: args['--start'],
+        version: args['--version'],
     };
 };
 
 const configAllowedArgs = ['db', 'remote-sync', 'smtp'];
 const modAllowedArgs = ['remote-sync', 'smtp'];
+
+const confStore = new configstore();
 
 const cli = async (args) => {
     let dbStatus;
@@ -79,11 +88,17 @@ const cli = async (args) => {
             return;
         }
 
+        const jobName = options.job || 'master';
+        let jobConfStore = new configstore({configName: jobName});
+        const jobConfigObj = jobConfStore.store;
+
         if (options.reset) {
-            const resetConfirm = await inquirer.askResetConfirmation();
+            const resetConfirm = await inquirer.askResetConfirmation(jobName);
             if (resetConfirm.resetConfirmation) {
-                confStore.clear();
-                console.log(strings.resetSuccessLog);
+                console.log(`Resetting configurations for the job '${jobName}`)
+                jobConfStore.clear();
+                confStore.delete(jobName);
+                console.log('Success');
                 return;
             } else {
                 return;
@@ -98,7 +113,9 @@ const cli = async (args) => {
             !options.version &&
             !options.config &&
             !options.reset &&
-            !options.file
+            !options.file &&
+            !options.enablejob &&
+            !options.disablejob
         ) {
             console.log(strings.usageInfo);
             return;
@@ -111,9 +128,7 @@ const cli = async (args) => {
             }
         }
         if (!options.config && options.file) {
-            console.error(
-                'Use --flag=filePath along with --config=module for initializing the module config using the file'
-            );
+            console.error(strings.fileWoConfigArg);
             return;
         }
 
@@ -144,59 +159,103 @@ const cli = async (args) => {
         }
 
         if (options.config == 'db') {
-            let dbSetupRes = await db.setupConfig(isDebug, options.file);
+            let dbSetupRes = await db.setupConfig(jobName, isDebug, options.file);
         } else if (options.config == 'remote-sync') {
-            let remoteSetupRes = await remoteSync.setupConfig(isDebug, options.file);
+            let remoteSetupRes = await remoteSync.setupConfig(jobName, isDebug, options.file);
         } else if (options.config == 'smtp') {
-            let smtpSetupRes = await smtp.setupConfig(isDebug, options.file);
+            let smtpSetupRes = await smtp.setupConfig(jobName, isDebug, options.file);
         }
 
-        const configObj = confStore.store;
-
         if (options.enable == 'remote-sync') {
-            if (!configObj.remoteSetupComplete) {
+            if (!jobConfigObj.remoteSetupComplete) {
                 console.log('Finish the remote sync configuration below before enabling');
-                let remoteSetupRes = await remoteSync.setupConfig(isDebug);
+                let remoteSetupRes = await remoteSync.setupConfig(jobName, isDebug);
                 if (remoteSetupRes) {
-                    console.log('remote-sync enabled');
-                    confStore.set('remoteSyncEnabled', true);
+                    console.log(`Enabling module 'remote-sync'`);
+                    jobConfStore.set('remoteSyncEnabled', true);
+                    console.log('Success');
                 }
+            } else if(jobConfigObj.remoteSyncEnabled) {
+                console.log(`Module 'remote-sync' already enabled`)
             } else {
-                console.log('remote-sync enabled');
-                confStore.set('remoteSyncEnabled', true);
+                console.log(`Enabling module 'remote-sync'`);
+                jobConfStore.set('remoteSyncEnabled', true);
+                console.log('Success');
             }
         } else if (options.enable == 'smtp') {
-            if (!configObj.smtpSetupComplete) {
+            if (!jobConfigObj.smtpSetupComplete) {
                 console.log('Finish the smtp configuration below before enabling');
-                let smtpSetupRes = await smtp.setupConfig(isDebug);
+                let smtpSetupRes = await smtp.setupConfig(jobName, isDebug);
                 if (smtpSetupRes) {
-                    console.log('smtp enabled');
-                    confStore.set('smtpEnabled', true);
+                    console.log(`Enabling module 'smtp'`);
+                    jobConfStore.set('smtpEnabled', true);
+                    console.log('Success');
                 }
-            } else {
-                console.log('smtp enabled');
-                confStore.set('smtpEnabled', true);
+            } else if(jobConfigObj.smtpEnabled) {
+                console.log(`Module 'smtp' already enabled`)
+            }  else {
+                console.log(`Enabling module 'smtp'`);
+                jobConfStore.set('smtpEnabled', true);
+                console.log('Success');
             }
         }
 
         if (options.disable == 'remote-sync') {
-            console.log('remote-sync disabled');
-            confStore.set('remoteSyncEnabled', false);
+            if(!jobConfigObj.remoteSyncEnabled) {
+                console.log(`Module 'remote-sync' already disabled`);    
+            } else {
+                console.log(`Disabling module 'remote-sync'`);
+                jobConfStore.set('remoteSyncEnabled', false);
+                console.log('Success');
+            }
         } else if (options.disable == 'smtp') {
-            console.log('smtp disabled');
-            confStore.set('smtpEnabled', false);
+            if(!jobConfigObj.smtpEnabled) {
+                console.log(`Module 'smtp' already disabled`);    
+            } else {
+                console.log(`Disabling module 'smtp'`);
+                jobConfStore.set('smtpEnabled', false);
+                console.log('Success');
+            }
+        }
+
+        if (options.enablejob) {
+            if (!jobConfigObj.dbSetupComplete) {
+                console.log('Finish the db configuration below before enabling a job');
+                let dbSetup = await db.setupConfig(jobName, isDebug);
+                if (dbSetup) {
+                    console.log(`Enabling job '${jobName}'`);
+                    confStore.set(`${jobName}.enabled`, true);
+                    console.log('Success');
+                }
+            } else if (confStore.get(`${jobName}.enabled`)){
+                console.log(`Job '${jobName}' already enabled`);
+            } else {
+                console.log(`Enabling job '${jobName}'`);
+                confStore.set(`${jobName}.enabled`, true);
+                console.log('Success');
+            }
+        }
+
+        if (options.disablejob) {
+            if(!jobConfigObj.dbSetupComplete) {
+                console.error(`Job '${jobName}' does not exist!`)
+            } else if (!confStore.get(`${jobName}.enabled`)){
+                console.log(`Job '${jobName} already disabled`);
+            } else {
+                console.log(`Disabling job '${jobName}`);
+                confStore.set(`${jobName}.enabled`, false);
+                console.log('Success');
+            }
         }
 
         if (options.start) {
-            if (!configObj.dbSetupComplete) {
-                console.log('Finish the db configuration below before starting an instance');
-                let dbSetup = await db.setupConfig(isDebug);
-                if (dbSetup) {
-                    backupScheduler(isDebug);
-                }
-            } else {
-                backupScheduler(isDebug);
+            const jobNamesConfig = confStore.store;
+            let jobNames = [];
+            for (let j in jobNamesConfig) {
+                if(jobNamesConfig[j].enabled)
+                    jobNames.push(j);
             }
+            backupScheduler(jobNames, isDebug);
         }
     } catch (err) {
         console.error(`${err.name}: ${err.message}`);

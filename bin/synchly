@@ -15,10 +15,12 @@ const completion = omelette('synchly').tree({
         'remote-sync': ['--debug', '--stacktrace'],
         'smtp': ['--debug', '--stacktrace']
     },
+    '--enablejob': [],
+    '--disablejob': [],
     '--version':[],
     '--help':[],
     '--start': [],
-    '--reset': [],
+    '--reset': ['--job'],
 });
 completion.init();
 

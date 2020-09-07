@@ -7,9 +7,8 @@ const inquirer = require('./inquirer');
 const ora = require('ora');
 const validator = require('./validator');
 
-const confStore = new configstore();
-
-const setupConfig = async (isDebug, filePath = undefined) => {
+const setupConfig = async (jobName, isDebug, filePath = undefined) => {
+    const jobConfStore = new configstore({configName: jobName});
     let dbConnStatus;
     dbConnStatus = ora('Authenticating you, please wait...');
     try {
@@ -19,15 +18,15 @@ const setupConfig = async (isDebug, filePath = undefined) => {
             dbConnStatus.start();
             config = await validator.validateInitConfig(config);
         } else {
-            config = await inquirer.askConfig();
+            config = await inquirer.askConfig(jobName);
             dbConnStatus.start();
         }
 
-        const dbConnRes = await connect(config);
+        const dbConnRes = await connect(jobName, config);
         dbConnStatus.succeed('Authentication success');
 
         config.dbSetupComplete = true;
-        confStore.set(config);
+        jobConfStore.set(config);
         console.log('Database configuration updated successfully.');
 
         return config;
@@ -55,15 +54,16 @@ let connect = async (dbConfig) => {
     return resp;
 };
 
-let dump = async (backupDirName) => {
-    const dbType = confStore.get('dbType');
-    const configObj = confStore.store;
+let dump = async (jobName, backupDirName) => {
+    const jobConfStore = new configstore({configName: jobName});
+    const jobConfigObj = jobConfStore.store;
+    const dbType = jobConfigObj.dbType;
 
     let resp;
     if (dbType == 'MongoDB') {
-        resp = await mongoDb.dump(configObj, backupDirName);
+        resp = await mongoDb.dump(jobConfigObj, backupDirName);
     } else if (dbType == 'MySQL') {
-        resp = await mysql.dump(configObj, backupDirName);
+        resp = await mysql.dump(jobConfigObj, backupDirName);
     }
     return resp;
 };
